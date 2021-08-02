@@ -13,6 +13,13 @@ diccionario_file = 'diccionario_cuestionario_ampliado_cpv2020.xlsx'
 mexico_folder = 'Censo2020_CA_eum_csv'
 personas_file = 'Personas00.csv'
 viviendas_file = 'Viviendas00.csv'
+inegi_zip_url = 'http://en.www.inegi.org.mx/contenidos/programas/ccpv/2020/microdatos/Censo2020_CA_eum_csv.zip'
+
+## custom indicators - anything that involves multiple columns need to live here. Define as functions on row here
+## '{label}': lambda r: {function that returns true or false}
+custom_indicators = {
+    'NUMPERS/CUADORM > 2.5': lambda r: r['NUMPERS']/r['CUADORM'] > 2.5
+}
 
 if not os.path.exists(diccionario_file): 
     print('Missing file: diccionario_cuestionario_ampliado_cpv2020.xlsx must be present in current directory')
@@ -22,7 +29,7 @@ if not os.path.exists(os.path.join(mexico_folder, viviendas_file)):
     print('No data found in Censo2020_CA_eum_csv folder (or no folder found)\nAttempting to download now (allow a few minutes), starting at ' + str(datetime.datetime.now().time))
     try:
         save_path = 'Censo2020_CA_eum_csv.zip'
-        r = requests.get("http://en.www.inegi.org.mx/contenidos/programas/ccpv/2020/microdatos/Censo2020_CA_eum_csv.zip", stream=True)
+        r = requests.get(inegi_zip_url, stream=True)
         
         z = zipfile.ZipFile(io.BytesIO(r.content))
         z.extractall(mexico_folder)  
@@ -41,13 +48,17 @@ indicators['Header'] = indicators['Header'].fillna(method='ffill')
 indicators = indicators[indicators['Value'].apply(lambda r: not '{' in str(r))].dropna()
 
 indicators = indicators[indicators['Indicator']].drop(columns='Indicator').reset_index(drop=True)
+indicators['Value'] = indicators['Value'].apply(int)
 qualifications = indicators.groupby(['Header'])['Value'].apply(list).to_dict()
 
 print("Parsed Indicators:")
 print(indicators)
 
 mexico_viviendas = pd.read_csv(os.path.join(mexico_folder, viviendas_file))
+ 
 total_viviendas_in_sample = len(mexico_viviendas)
+indicators['Total Count'] = indicators.apply(lambda row: (mexico_viviendas[row['Header']] == row['Value']).sum(), axis=1)
+indicators['Total Percentage'] = indicators['Total Count']/total_viviendas_in_sample
 
 total_personas_in_sample = mexico_viviendas['NUMPERS'].sum()
 people_per_household = total_personas_in_sample/total_viviendas_in_sample
@@ -55,20 +66,21 @@ people_per_household = total_personas_in_sample/total_viviendas_in_sample
 total_households_mexico = int(total_population_mexico/people_per_household)
 
 def filter(q: dict[str, list[int]] , r): 
-    return any([q[key].__contains__(r[key]) for key in q])
+    return any([q[key].__contains__(r[key]) for key in q]) or any([custom_indicators[f](r) for f in custom_indicators])
 
-inadequate_all = mexico_viviendas.apply(lambda r:  filter(qualifications, r), axis=1)
+total_inadequate_ignore_income = mexico_viviendas.apply(lambda r:  filter(qualifications, r), axis=1).sum()
 mexico_has_income_reported = mexico_viviendas[mexico_viviendas['INGTRHOG'].notna()]
+del mexico_viviendas
 income_plot = mexico_has_income_reported[mexico_has_income_reported['INGTRHOG'] < 40000]
 inadequate = mexico_has_income_reported.apply(lambda r:  filter(qualifications, r), axis=1)
 sample_inadequate = mexico_has_income_reported[inadequate].reset_index(drop=True)
 sample_inadequate_plot = sample_inadequate[sample_inadequate['INGTRHOG'] < 40000]
 
-in_target_salary = sample_inadequate_plot[(sample_inadequate_plot['INGTRHOG'] <= 8000) & (sample_inadequate_plot['INGTRHOG'] >= 5000)]
+tam = sample_inadequate_plot[(sample_inadequate_plot['INGTRHOG'] <= 8000) & (sample_inadequate_plot['INGTRHOG'] >= 5000)].reset_index(drop=True)
 
 plt.hist(income_plot['INGTRHOG'], bins=40, alpha=0.5, color='grey', weights=np.ones(len(income_plot)) / len(mexico_has_income_reported), edgecolor='white', linewidth=0.5, label='All households')
 plt.hist(sample_inadequate_plot['INGTRHOG'], bins=40, weights=np.ones(len(sample_inadequate_plot)) / len(mexico_has_income_reported), edgecolor='white', linewidth=0.5, label='Households with inadequate housing')
-plt.hist(in_target_salary['INGTRHOG'], bins=3, color='g', weights=np.ones(len(in_target_salary)) / len(mexico_has_income_reported), edgecolor='white', linewidth=0.5, label='TAM')
+plt.hist(tam['INGTRHOG'], bins=3, color='g', weights=np.ones(len(tam)) / len(mexico_has_income_reported), edgecolor='white', linewidth=0.5, label='TAM')
 
 plt.gca().yaxis.set_major_formatter(PercentFormatter(1))
 plt.title("Income breakdown by household in sample")
@@ -82,7 +94,7 @@ plt.clf()
 
 plt.hist(income_plot['INGTRHOG'], bins=40, alpha=0.5, color='grey', weights=np.ones(len(income_plot)) / len(mexico_has_income_reported) * total_households_mexico / 1000000, edgecolor='white', linewidth=0.5, label='All households')
 plt.hist(sample_inadequate_plot['INGTRHOG'], bins=40, weights=np.ones(len(sample_inadequate_plot)) / len(mexico_has_income_reported) * total_households_mexico / 1000000, edgecolor='white', linewidth=0.5, label='Households with inadequate housing')
-plt.hist(in_target_salary['INGTRHOG'], bins=3, color='g', weights=np.ones(len(in_target_salary)) / len(mexico_has_income_reported) * total_households_mexico / 1000000, edgecolor='white', linewidth=0.5, label='TAM')
+plt.hist(tam['INGTRHOG'], bins=3, color='g', weights=np.ones(len(tam)) / len(mexico_has_income_reported) * total_households_mexico / 1000000, edgecolor='white', linewidth=0.5, label='TAM')
 
 plt.title("Estimated household income distribution in Mexico")
 plt.grid()
@@ -94,7 +106,13 @@ plt.savefig("histogram_total.png")
 
 in_income_range = (mexico_has_income_reported['INGTRHOG'] > 5000) & (mexico_has_income_reported['INGTRHOG'] < 8000)
 
-total_inadequate_ignore_income = inadequate_all.sum()
+in_income_range_df = mexico_has_income_reported[in_income_range]
+indicators['Count in target income'] = indicators.apply(lambda row: (in_income_range_df[row['Header']] == row['Value']).sum(), axis=1)
+del in_income_range_df
+indicators['Percentage in target income'] = indicators['Total Count']/in_income_range.sum()
+
+indicators.to_csv(path_or_buf='count_by_indicator.csv', index=False)
+
 total_inadequate = inadequate.sum()
 total_in_income_range = in_income_range.sum()
 both = in_income_range & inadequate
@@ -144,6 +162,6 @@ with open('summary.csv', 'w', newline='') as csvfile:
     writer.writerow(['Percentage of households in TAM in sample', tam_sample/total_income_reported*100])
     writer.writerow(['Estimated households in TAM in Mexico', tam_sample/total_income_reported*total_households_mexico])
     writer.writerow(['TAM size in sample, people', personas_in_tam])
-    writer.writerow(['Percentage of people in TAM in sample', personas_in_tam/personas_with_income_reported])
+    writer.writerow(['Percentage of people in TAM in sample', personas_in_tam/personas_with_income_reported]*100)
     writer.writerow(['Estimated people in TAM in Mexico', personas_in_tam/personas_with_income_reported*total_population_mexico])
     
