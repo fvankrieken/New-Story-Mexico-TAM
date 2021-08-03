@@ -162,6 +162,6 @@ with open('summary.csv', 'w', newline='') as csvfile:
     writer.writerow(['Percentage of households in TAM in sample', tam_sample/total_income_reported*100])
     writer.writerow(['Estimated households in TAM in Mexico', tam_sample/total_income_reported*total_households_mexico])
     writer.writerow(['TAM size in sample, people', personas_in_tam])
-    writer.writerow(['Percentage of people in TAM in sample', personas_in_tam/personas_with_income_reported]*100)
+    writer.writerow(['Percentage of people in TAM in sample', personas_in_tam/personas_with_income_reported*100])
     writer.writerow(['Estimated people in TAM in Mexico', personas_in_tam/personas_with_income_reported*total_population_mexico])
     
