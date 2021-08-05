@@ -19,8 +19,8 @@ lower_income_limit = 5000 ## monthly, pesos
 upper_income_limit = 10000
 upper_income_limit_for_plot = 40000
 
-histogram_bins = np.floor(upper_income_limit_for_plot/1000.0)
-tam_bins = np.floor(upper_income_limit-lower_income_limit/1000.0)
+histogram_bins = int(np.floor(upper_income_limit_for_plot/1000.0))
+tam_bins = int(np.floor(upper_income_limit-lower_income_limit/1000.0))
 
 ## custom indicators - anything that involves multiple columns need to live here. Define as functions on row here
 ## '{label}': lambda r: {function that returns true or false}
