@@ -15,6 +15,13 @@ personas_file = 'Personas00.csv'
 viviendas_file = 'Viviendas00.csv'
 inegi_zip_url = 'http://en.www.inegi.org.mx/contenidos/programas/ccpv/2020/microdatos/Censo2020_CA_eum_csv.zip'
 
+lower_income_limit = 5000 ## monthly, pesos
+upper_income_limit = 10000
+upper_income_limit_for_plot = 40000
+
+histogram_bins = np.floor(upper_income_limit_for_plot/1000.0)
+tam_bins = np.floor(upper_income_limit-lower_income_limit/1000.0)
+
 ## custom indicators - anything that involves multiple columns need to live here. Define as functions on row here
 ## '{label}': lambda r: {function that returns true or false}
 custom_indicators = {
@@ -71,16 +78,16 @@ def filter(q: dict[str, list[int]] , r):
 total_inadequate_ignore_income = mexico_viviendas.apply(lambda r:  filter(qualifications, r), axis=1).sum()
 mexico_has_income_reported = mexico_viviendas[mexico_viviendas['INGTRHOG'].notna()]
 del mexico_viviendas
-income_plot = mexico_has_income_reported[mexico_has_income_reported['INGTRHOG'] < 40000]
+income_plot = mexico_has_income_reported[mexico_has_income_reported['INGTRHOG'] < upper_income_limit_for_plot]
 inadequate = mexico_has_income_reported.apply(lambda r:  filter(qualifications, r), axis=1)
 sample_inadequate = mexico_has_income_reported[inadequate].reset_index(drop=True)
-sample_inadequate_plot = sample_inadequate[sample_inadequate['INGTRHOG'] < 40000]
+sample_inadequate_plot = sample_inadequate[sample_inadequate['INGTRHOG'] < upper_income_limit_for_plot]
 
-tam = sample_inadequate_plot[(sample_inadequate_plot['INGTRHOG'] <= 8000) & (sample_inadequate_plot['INGTRHOG'] >= 5000)].reset_index(drop=True)
+tam = sample_inadequate_plot[(sample_inadequate_plot['INGTRHOG'] <= upper_income_limit) & (sample_inadequate_plot['INGTRHOG'] >= lower_income_limit)].reset_index(drop=True)
 
-plt.hist(income_plot['INGTRHOG'], bins=40, alpha=0.5, color='grey', weights=np.ones(len(income_plot)) / len(mexico_has_income_reported), edgecolor='white', linewidth=0.5, label='All households')
-plt.hist(sample_inadequate_plot['INGTRHOG'], bins=40, weights=np.ones(len(sample_inadequate_plot)) / len(mexico_has_income_reported), edgecolor='white', linewidth=0.5, label='Households with inadequate housing')
-plt.hist(tam['INGTRHOG'], bins=3, color='g', weights=np.ones(len(tam)) / len(mexico_has_income_reported), edgecolor='white', linewidth=0.5, label='TAM')
+plt.hist(income_plot['INGTRHOG'], bins=histogram_bins, alpha=0.5, color='grey', weights=np.ones(len(income_plot)) / len(mexico_has_income_reported), edgecolor='white', linewidth=0.5, label='All households')
+plt.hist(sample_inadequate_plot['INGTRHOG'], bins=histogram_bins, weights=np.ones(len(sample_inadequate_plot)) / len(mexico_has_income_reported), edgecolor='white', linewidth=0.5, label='Households with inadequate housing')
+plt.hist(tam['INGTRHOG'], bins=tam_bins, color='g', weights=np.ones(len(tam)) / len(mexico_has_income_reported), edgecolor='white', linewidth=0.5, label='TAM')
 
 plt.gca().yaxis.set_major_formatter(PercentFormatter(1))
 plt.title("Income breakdown by household in sample")
@@ -92,9 +99,9 @@ plt.xlabel("Monthly income, pesos")
 plt.savefig("histogram_percentage.png")
 plt.clf()
 
-plt.hist(income_plot['INGTRHOG'], bins=40, alpha=0.5, color='grey', weights=np.ones(len(income_plot)) / len(mexico_has_income_reported) * total_households_mexico / 1000000, edgecolor='white', linewidth=0.5, label='All households')
-plt.hist(sample_inadequate_plot['INGTRHOG'], bins=40, weights=np.ones(len(sample_inadequate_plot)) / len(mexico_has_income_reported) * total_households_mexico / 1000000, edgecolor='white', linewidth=0.5, label='Households with inadequate housing')
-plt.hist(tam['INGTRHOG'], bins=3, color='g', weights=np.ones(len(tam)) / len(mexico_has_income_reported) * total_households_mexico / 1000000, edgecolor='white', linewidth=0.5, label='TAM')
+plt.hist(income_plot['INGTRHOG'], bins=histogram_bins, alpha=0.5, color='grey', weights=np.ones(len(income_plot)) / len(mexico_has_income_reported) * total_households_mexico / 1000000, edgecolor='white', linewidth=0.5, label='All households')
+plt.hist(sample_inadequate_plot['INGTRHOG'], bins=histogram_bins, weights=np.ones(len(sample_inadequate_plot)) / len(mexico_has_income_reported) * total_households_mexico / 1000000, edgecolor='white', linewidth=0.5, label='Households with inadequate housing')
+plt.hist(tam['INGTRHOG'], bins=tam_bins, color='g', weights=np.ones(len(tam)) / len(mexico_has_income_reported) * total_households_mexico / 1000000, edgecolor='white', linewidth=0.5, label='TAM')
 
 plt.title("Estimated household income distribution in Mexico")
 plt.grid()
@@ -104,7 +111,7 @@ plt.xlabel("Monthly income, pesos")
 
 plt.savefig("histogram_total.png")
 
-in_income_range = (mexico_has_income_reported['INGTRHOG'] > 5000) & (mexico_has_income_reported['INGTRHOG'] < 8000)
+in_income_range = (mexico_has_income_reported['INGTRHOG'] > lower_income_limit) & (mexico_has_income_reported['INGTRHOG'] < upper_income_limit)
 
 in_income_range_df = mexico_has_income_reported[in_income_range]
 indicators['Count in target income'] = indicators.apply(lambda row: (in_income_range_df[row['Header']] == row['Value']).sum(), axis=1)
